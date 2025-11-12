@@ -566,12 +566,12 @@ interface LiveTvChannel {
     logo: string;
     streamUrl?: string;
     playerType?: 'iframe' | 'hls';
+    needsProxy?: boolean;
 }
 
 const liveTvChannels: LiveTvChannel[] = [
-    { id: 'cinetv-kids', name: 'CineTV Kids', logo: 'https://i.ibb.co/3kR0r6G/DALL-E-2024-05-21-13-15-15-A-vibrant-and-playful-logo-for-a-kids-TV-channel-named-Cine-TV-Kids-The-d.webp' },
-    { id: 'mbc3', name: 'MBC3', logo: 'https://imgs.search.brave.com/0hTR01IF_wHvZrqGVXVKfvQOEtUICLLSfOofs_NCnrQ/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9zZWVr/bG9nby5jb20vaW1h/Z2VzL00vbWJjLTMt/bG9nby00RjMzOUEw/NERDLXNlZWtsb2dv/LmNvbS5wbmc', streamUrl: 'https://shd-gcp-live.edgenextcdn.net/live/bitmovin-mbc-3-usa/5d58265a862a476dc7f97694addb5ded/manifest/video/1080p2400kbps/video.m3u8' },
-    { id: 'spacetoon', name: 'Spacetoon', logo: 'https://imgs.search.brave.com/LdmmhzOCvcsYwqnTCq37VS4diHedP3MfH6z7M1LQ-10/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly91cGxv/YWQud2lraW1lZGlh/Lm9yZy93aWtpcGVk/aWEvYXIvdGh1bWIv/MS8xMC8lRDglQjQl/RDglQjklRDglQTcl/RDglQjFfJUQ4JUIz/JUQ4JUE4JUQ5JThB/JUQ4JUIzJUQ4JUFB/JUQ5JTg4JUQ5JTg2/LnBuZy80NTBweC0l/RDglQjQlRDglQjkl/RDglQTclRDglQjFf/JUQ4JUIzJUQ4JUE4/JUQ5JThBJUQ4JUIz/JUQ4JUFBJUQ5JTg4/JUQ5JTg2LnBuZw', streamUrl: 'https://live-uae.spacetoongo.com/ST_Live_UAE/hls/ST_Live_UAE_1080p.m3u8?pkg_media=video&pkg_alone=1&pkg_hm=index.m3u8&pkg_svc=1&pkg_vcodec=avc1' },
+    { id: 'mbc3', name: 'MBC3', logo: 'https://imgs.search.brave.com/0hTR01IF_wHvZrqGVXVKfvQOEtUICLLSfOofs_NCnrQ/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9zZWVr/bG9nby5jb20vaW1h/Z2VzL00vbWJjLTMt/bG9nby00RjMzOUEw/NERDLXNlZWtsb2dv/LmNvbS5wbmc', streamUrl: 'https://streamxx.foupix.com/mbc3/mbc3.htm', playerType: 'iframe' },
+    { id: 'spacetoon', name: 'Spacetoon', logo: 'https://imgs.search.brave.com/LdmmhzOCvcsYwqnTCq37VS4diHedP3MfH6z7M1LQ-10/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly91cGxv/YWQud2lraW1lZGlh/Lm9yZy93aWtpcGVk/aWEvYXIvdGh1bWIv/MS8xMC8lRDglQjQl/RDglQjklRDglQTcl/RDglQjFfJUQ4JUIz/JUQ4JUE4JUQ5JThB/JUQ4JUIzJUQ4JUFB/JUQ5JTg4JUQ5JTg2/LnBuZy80NTBweC0l/RDglQjQlRDglQjkl/RDglQTclRDglQjFf/JUQ4JUIzJUQ4JUE4/JUQ5JThBJUQ4JUIz/JUQ4JUFBJUQ5JTg4/JUQ5JTg2LnBuZw', streamUrl: 'https://streamxx.foupix.com/spacetoon/mbc3.htm', playerType: 'iframe' },
     { id: 'cn', name: 'Cartoon Network', logo: 'https://imgs.search.brave.com/ePDYEl1A_bRn0qm5xcYQKS7NUQ9HzO02KzRHCYaPCAY/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly93d3cu/cG5nYXJ0cy5jb20v/ZmlsZXMvMi9DYXJ0/b29uLU5ldHdvcmst/UE5HLURvd25sb2Fk/LUltYWdlLmdpZg.gif', streamUrl: 'https://ok.ru/videoembed/10367353495046?nochat=1&autoplay=1', playerType: 'iframe' },
 ];
 
@@ -617,6 +617,7 @@ const LiveTvCard: React.FC<{ channel: LiveTvChannel; onCardFocus: (element: HTML
                         liveChannels: liveTvChannels,
                         currentChannelIndex: index,
                         logo: channel.logo,
+                        needsProxy: channel.needsProxy,
                     } 
                 });
             }
@@ -626,16 +627,16 @@ const LiveTvCard: React.FC<{ channel: LiveTvChannel; onCardFocus: (element: HTML
     return (
         <div
             ref={cardRef}
-            className="flex-shrink-0 w-[24vw] min-w-[220px] max-w-[320px] cursor-pointer focusable"
+            className="flex-shrink-0 w-[24vw] min-w-[220px] max-w-[320px] cursor-pointer focusable group live-tv-card-focusable"
             tabIndex={0}
             onClick={handleClick}
             onKeyDown={(e) => e.key === 'Enter' && handleClick()}
             onFocus={handleFocus}
             style={{ animationDelay: `${index * 50}ms` }}
         >
-            <div className="relative overflow-hidden transition-all duration-300 ease-in-out transform rounded-lg shadow-lg bg-[var(--surface)] group hover:scale-105 hover:shadow-2xl aspect-video flex items-center justify-center">
-                <img src={channel.logo} alt={channel.name} className="w-3/4 h-3/4 object-contain contrast-0 group-hover:contrast-100 transition-all duration-300" />
-                 <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <div className="relative overflow-hidden transition-all duration-300 ease-in-out transform rounded-lg shadow-lg bg-[var(--surface)] hover:shadow-2xl aspect-video flex items-center justify-center">
+                <img src={channel.logo} alt={channel.name} className="w-3/4 h-3/4 object-contain contrast-0 group-hover:contrast-100 group-focus-visible:contrast-100 transition-all duration-300" />
+                 <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity flex items-center justify-center">
                     <i className="fas fa-play text-white text-4xl drop-shadow-lg"></i>
                 </div>
             </div>
@@ -845,7 +846,7 @@ const HomePage: React.FC = () => {
                   <ContentRow title={t('familyMovies')} movies={data.familyMovies} onCardClick={handleOpenModal} zIndex={9} />
                   <ContentRow title={t('disneyMagic')} movies={data.disneyMagic} onCardClick={handleOpenModal} zIndex={8} />
                 </div>
-            </>
+            </> 
           ) : (  
             <>
                 <Hero movie={data.hero} isKids={isKidsMode} />
