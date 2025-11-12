@@ -155,13 +155,13 @@ const IframePlayerPage: React.FC = () => {
             position: 'fixed',
             top: 0,
             left: 0,
-            width: '100%',
-            height: '100%',
+            width: '100vw',
+            height: '100vh',
             background: 'black',
             overflow: 'hidden'
         }}>
             {/* FIX: The `inert` attribute expects a boolean value, not a string. */}
-            <div inert={isChannelListVisible}>
+            <div inert={isChannelListVisible} style={{ width: '100%', height: '100%', position: 'relative' }}>
                 <iframe
                     key={streamUrl + (unmuted ? '_unmuted' : '_muted')}
                     src={streamUrl}
