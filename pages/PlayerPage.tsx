@@ -57,7 +57,7 @@ const scheduleSchema = {
 const PlayerPage: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { item: initialItem, type, season: initialSeason, episode: initialEpisode, currentTime, streamUrl, liveChannels, currentChannelIndex, logo } = location.state || {};
+    const { item: initialItem, type, season: initialSeason, episode: initialEpisode, currentTime, streamUrl, liveChannels, currentChannelIndex, logo, needsProxy } = location.state || {};
     const { setToast, updateHistory, getScreenSpecificData, isKidsMode } = useProfile();
     const { t } = useTranslation();
     const { setPipData, setPipAnchor } = usePlayer();
@@ -383,6 +383,7 @@ const PlayerPage: React.FC = () => {
                 liveChannels={liveChannels}
                 currentChannelIndex={currentChannelIndex}
                 logo={logo}
+                needsProxy={needsProxy}
             />
         </div>
     );
