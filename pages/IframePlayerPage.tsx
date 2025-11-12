@@ -11,6 +11,7 @@ const ChannelListPanel: React.FC<{
   const [focusedIndex, setFocusedIndex] = useState(currentIndex);
   const [isRendered, setIsRendered] = useState(isVisible);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isVisible) {
@@ -29,6 +30,8 @@ const ChannelListPanel: React.FC<{
         if (item) {
           item.focus();
           item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          panelRef.current?.focus();
         }
       };
       const timer = setTimeout(focusItem, 150);
@@ -36,39 +39,43 @@ const ChannelListPanel: React.FC<{
     }
   }, [isVisible, focusedIndex]);
 
-  useEffect(() => {
-    if (!isVisible) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      e.stopPropagation();
-      if (e.key === 'ArrowUp') {
+  const handlePanelKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Escape', 'Enter'].includes(e.key)) {
         e.preventDefault();
-        setFocusedIndex(prev => (prev > 0 ? prev - 1 : channels.length - 1));
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setFocusedIndex(prev => (prev < channels.length - 1 ? prev + 1 : 0));
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        onSelect(focusedIndex);
-      } else if (['ArrowLeft', 'Escape', 'ArrowRight'].includes(e.key)) {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isVisible, channels.length, focusedIndex, onSelect, onClose]);
+    }
+
+    if (e.key === 'ArrowUp') {
+      setFocusedIndex(prev => (prev > 0 ? prev - 1 : channels.length - 1));
+    } else if (e.key === 'ArrowDown') {
+      setFocusedIndex(prev => (prev < channels.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'Enter') {
+      onSelect(focusedIndex);
+    } else if (['ArrowLeft', 'Escape', 'ArrowRight'].includes(e.key)) {
+      onClose();
+    }
+  };
+
 
   if (!isRendered) return null;
   const animationClass = isVisible ? 'animate-slide-in-from-right' : 'animate-slide-out-to-right';
 
   return (
-    <div className={`fixed top-0 right-0 h-full w-full max-w-xs bg-black/80 backdrop-blur-lg z-30 p-4 ${animationClass}`}>
+    <div
+      ref={panelRef}
+      onKeyDown={handlePanelKeyDown}
+      tabIndex={-1}
+      style={{outline: 'none'}}
+      className={`fixed top-0 right-0 h-full w-full max-w-xs bg-black/80 backdrop-blur-lg z-30 p-4 ${animationClass}`}
+    >
       <h2 className="text-2xl font-bold text-white mb-4">Channels</h2>
       <div className="h-[calc(100%-4rem)] overflow-y-auto no-scrollbar">
         {channels.map((channel, index) => (
           <button
             key={channel.id}
-            ref={el => (itemRefs.current[index] = el)}
+            // FIX: Ref callback should not return a value. Changed to a block statement.
+            ref={el => { itemRefs.current[index] = el; }}
             onClick={() => onSelect(index)}
             className="w-full flex items-center gap-4 p-3 my-1 rounded-lg text-left transition-colors duration-200 focus:outline-none focus:bg-white/20 hover:bg-white/10"
           >
@@ -153,7 +160,8 @@ const IframePlayerPage: React.FC = () => {
             background: 'black',
             overflow: 'hidden'
         }}>
-            <div inert={isChannelListVisible ? '' : undefined}>
+            {/* FIX: The `inert` attribute expects a boolean value, not a string. */}
+            <div inert={isChannelListVisible}>
                 <iframe
                     key={streamUrl + (unmuted ? '_unmuted' : '_muted')}
                     src={streamUrl}
@@ -192,7 +200,7 @@ const IframePlayerPage: React.FC = () => {
                             >
                                 <i className="fa-solid fa-volume-xmark"></i>
                             </button>
-                        )} 
+                        )}  
                         <button
                             ref={channelListButtonRef}
                             onClick={() => setIsChannelListVisible(true)}
