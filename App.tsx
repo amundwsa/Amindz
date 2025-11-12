@@ -104,75 +104,76 @@ const App: React.FC = () => {
       return;
     }
 
-    const focusables = (Array.from(navigationScope.querySelectorAll('.focusable:not([disabled])')) as HTMLElement[])
-      .filter(el => {
-        if (el.closest('[inert]')) {
-          return false;
-        }
-        const style = window.getComputedStyle(el);
-        const rect = el.getBoundingClientRect();
-        return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
-      });
-    const currentRect = currentElement.getBoundingClientRect();
+    const allFocusables = Array.from(navigationScope.querySelectorAll('.focusable:not([disabled])')) as HTMLElement[];
+    const focusablesWithRects = allFocusables
+        .map(el => ({ el, rect: el.getBoundingClientRect() }))
+        .filter(({ el, rect }) => {
+            if (el.closest('[inert]')) return false;
+            const style = window.getComputedStyle(el);
+            return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+        });
+
+    const currentIndex = focusablesWithRects.findIndex(({ el }) => el === currentElement);
+    if (currentIndex === -1) return;
+
+    const { rect: currentRect } = focusablesWithRects[currentIndex];
 
     let bestCandidate: HTMLElement | null = null;
     let minDistance = Infinity;
 
-    for (const candidate of focusables) {
-      if (candidate === currentElement) continue;
+    for (const { el: candidate, rect: candidateRect } of focusablesWithRects) {
+        if (candidate === currentElement) continue;
 
-      const candidateRect = candidate.getBoundingClientRect();
-      
-      const dx = (candidateRect.left + candidateRect.width / 2) - (currentRect.left + currentRect.width / 2);
-      const dy = (candidateRect.top + candidateRect.height / 2) - (currentRect.top + currentRect.height / 2);
+        const dx = (candidateRect.left + candidateRect.width / 2) - (currentRect.left + currentRect.width / 2);
+        const dy = (candidateRect.top + candidateRect.height / 2) - (currentRect.top + currentRect.height / 2);
 
-      let distance: number;
+        let distance: number;
 
-      switch (e.key) {
-        case 'ArrowRight':
-          if (dx > 0) {
-            distance = Math.abs(dy) * 2 + dx;
-            if (distance < minDistance) {
-              minDistance = distance;
-              bestCandidate = candidate;
-            }
-          }
-          break;
-        case 'ArrowLeft':
-          if (dx < 0) {
-            distance = Math.abs(dy) * 2 + Math.abs(dx);
-            if (distance < minDistance) {
-              minDistance = distance;
-              bestCandidate = candidate;
-            }
-          }
-          break;
-        case 'ArrowDown':
-          if (dy > 0) {
-            distance = Math.abs(dx) * 2 + dy;
-            if (distance < minDistance) {
-              minDistance = distance;
-              bestCandidate = candidate;
-            }
-          }
-          break;
-        case 'ArrowUp':
-          if (dy < 0) {
-            distance = Math.abs(dx) * 2 + Math.abs(dy);
-            if (distance < minDistance) {
-              minDistance = distance;
-              bestCandidate = candidate;
-            }
-          }
-          break;
-      }
+        switch (e.key) {
+            case 'ArrowRight':
+                if (dx > 0) {
+                    distance = Math.abs(dy) * 2 + dx;
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        bestCandidate = candidate;
+                    }
+                }
+                break;
+            case 'ArrowLeft':
+                if (dx < 0) {
+                    distance = Math.abs(dy) * 2 + Math.abs(dx);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        bestCandidate = candidate;
+                    }
+                }
+                break;
+            case 'ArrowDown':
+                if (dy > 0) {
+                    distance = Math.abs(dx) * 2 + dy;
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        bestCandidate = candidate;
+                    }
+                }
+                break;
+            case 'ArrowUp':
+                if (dy < 0) {
+                    distance = Math.abs(dx) * 2 + Math.abs(dy);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        bestCandidate = candidate;
+                    }
+                }
+                break;
+        }
     }
 
     if (bestCandidate) {
-      bestCandidate.focus();
-      bestCandidate.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        bestCandidate.focus();
+        bestCandidate.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
     }
-  }, [enterPressCount, showTvCursor, cursorPosition.x, cursorPosition.y]);
+}, [enterPressCount, showTvCursor, cursorPosition.x, cursorPosition.y]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
