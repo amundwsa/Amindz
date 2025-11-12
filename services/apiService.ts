@@ -58,8 +58,6 @@ export const fetchFromTMDB = async (endpoint: string, params: Record<string, str
   return fetchWithHeaders(url);
 };
 
-export const PROXY_URL = 'https://12spapi.fly.dev';
-
 export const fetchStreamUrl = async (
     item: Movie,
     media_type: 'movie' | 'tv',
@@ -208,6 +206,7 @@ export const fetchStreamUrl = async (
                     }
                 }
                 
+                const PROXY_URL = 'https://12spapi.fly.dev';
                 // Build proxied links for moviebox to ensure CORS compatibility, especially for local development.
                 let processedLinks = finalLinks.map(link => {
                     if (provider.id === 'moviebox') {
