@@ -29,12 +29,97 @@ interface PlayerProps {
     liveChannels?: any[];
     currentChannelIndex?: number;
     logo?: string;
+    isLiveScheduleMode?: boolean;
+    onVideoEnded?: () => void;
+    liveReason?: string;
 }
 
 interface SkipSegment {
     start: number;
     end: number;
 }
+
+const ChannelListPanel: React.FC<{
+  channels: any[];
+  currentIndex: number;
+  onSelect: (index: number) => void;
+  onClose: () => void;
+  isVisible: boolean;
+}> = ({ channels, currentIndex, onSelect, onClose, isVisible }) => {
+  const [focusedIndex, setFocusedIndex] = useState(currentIndex);
+  const [isRendered, setIsRendered] = useState(isVisible);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useEffect(() => {
+    if (isVisible) {
+      setIsRendered(true);
+      setFocusedIndex(currentIndex);
+    } else {
+      const timer = setTimeout(() => setIsRendered(false), 300); // match animation duration
+      return () => clearTimeout(timer);
+    }
+  }, [isVisible, currentIndex]);
+
+  useEffect(() => {
+    if (isVisible) {
+      const focusItem = () => {
+        const item = itemRefs.current[focusedIndex];
+        if (item) {
+          item.focus();
+          item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      };
+      const timer = setTimeout(focusItem, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isVisible, focusedIndex]);
+
+  useEffect(() => {
+    if (!isVisible) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      e.stopPropagation();
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setFocusedIndex(prev => (prev > 0 ? prev - 1 : channels.length - 1));
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setFocusedIndex(prev => (prev < channels.length - 1 ? prev + 1 : 0));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        onSelect(focusedIndex);
+      } else if (['ArrowLeft', 'Escape', 'ArrowRight'].includes(e.key)) {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isVisible, channels.length, focusedIndex, onSelect, onClose]);
+
+  if (!isRendered) return null;
+
+  const animationClass = isVisible ? 'animate-slide-in-from-right' : 'animate-slide-out-to-right';
+
+  return (
+    <div className={`fixed top-0 right-0 h-full w-full max-w-xs bg-black/80 backdrop-blur-lg z-30 p-4 ${animationClass}`}>
+      <h2 className="text-2xl font-bold text-white mb-4">Channels</h2>
+      <div className="h-[calc(100%-4rem)] overflow-y-auto no-scrollbar">
+        {channels.map((channel, index) => (
+          <button
+            key={channel.id}
+            ref={el => (itemRefs.current[index] = el)}
+            onClick={() => onSelect(index)}
+            className="w-full flex items-center gap-4 p-3 my-1 rounded-lg text-left transition-colors duration-200 focus:outline-none focus:bg-white/20 hover:bg-white/10"
+          >
+            <img src={channel.logo} alt={channel.name} className="w-16 h-12 object-contain flex-shrink-0 rounded-md bg-zinc-700 p-1" />
+            <span className="text-white font-semibold truncate">{channel.name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 
 const formatTime = (seconds: number) => {
     if (isNaN(seconds) || seconds < 0) return '00:00';
@@ -353,7 +438,7 @@ const SettingsPanel: React.FC<{
     );
 };
 
-const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, initialEpisode, initialTime, initialStreamUrl, onProviderSelected, onStreamFetchStateChange, setVideoNode, serverPreferences, episodes, onEpisodeSelect, selectedProvider, liveChannels, currentChannelIndex, logo }) => {
+const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, initialEpisode, initialTime, initialStreamUrl, onProviderSelected, onStreamFetchStateChange, setVideoNode, serverPreferences, episodes, onEpisodeSelect, selectedProvider, liveChannels, currentChannelIndex, logo, isLiveScheduleMode, onVideoEnded, liveReason }) => {
     const navigate = useNavigate();
     const { setToast, getScreenSpecificData, setScreenSpecificData } = useProfile();
     const { t, language: userLanguage } = useTranslation();
@@ -371,7 +456,7 @@ const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, ini
     const subtitlesButtonRef = useRef<HTMLButtonElement>(null);
     const skipButtonRef = useRef<HTMLButtonElement>(null);
     const lastFocusedControlRef = useRef<HTMLElement | null>(null);
-    const nextChannelButtonRef = useRef<HTMLButtonElement>(null);
+    const channelListButtonRef = useRef<HTMLButtonElement>(null);
 
 
     const [streamLinks, setStreamLinks] = useState<StreamLink[]>([]);
@@ -395,6 +480,7 @@ const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, ini
     
     const [showSettingsPanel, setShowSettingsPanel] = useState(false);
     const [showSubtitlesPanel, setShowSubtitlesPanel] = useState(false);
+    const [isChannelListVisible, setIsChannelListVisible] = useState(false);
     const [playbackRate, setPlaybackRate] = useState(1);
 
     const [skipSegments, setSkipSegments] = useState<{ intro: SkipSegment | null; outro: SkipSegment | null }>({ intro: null, outro: null });
@@ -409,17 +495,20 @@ const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, ini
     const scheduledSegmentIds = useRef<Set<string>>(new Set());
     const dubbingTimestampsRef = useRef<{ start: number; end: number }[]>([]);
 
-    const handleNextChannel = useCallback(() => {
+    const handleSelectChannel = useCallback((index: number) => {
         if (!liveChannels || typeof currentChannelIndex !== 'number') return;
+        if (index === currentChannelIndex) {
+            setIsChannelListVisible(false);
+            return;
+        }
     
-        const nextIndex = (currentChannelIndex + 1) % liveChannels.length;
-        const nextChannel = liveChannels[nextIndex];
+        const nextChannel = liveChannels[index];
     
         const nextState = {
             item: { id: nextChannel.id, name: nextChannel.name, title: nextChannel.name, logo: nextChannel.logo },
             streamUrl: nextChannel.streamUrl,
             liveChannels: liveChannels,
-            currentChannelIndex: nextIndex,
+            currentChannelIndex: index,
             logo: nextChannel.logo,
         };
     
@@ -484,7 +573,7 @@ const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, ini
             
             try {
                 // Fetch recommendations
-                if (!liveChannels) {
+                if (!liveChannels && !isLiveScheduleMode) {
                     const recsData = await fetchFromTMDB(`/${itemType}/${item.id}/recommendations`);
                     setRecommendations(recsData.results.filter((m: Movie) => m.backdrop_path));
                 }
@@ -532,9 +621,10 @@ const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, ini
                 }
             }
         };
-
-        fetchData();
-    }, [item.id, initialEpisode?.id, selectedProvider, serverPreferences.join()]);
+        if (!isLiveScheduleMode) {
+            fetchData();
+        }
+    }, [item.id, initialEpisode?.id, selectedProvider, serverPreferences.join(), isLiveScheduleMode]);
 
     // Effect 2: Play the video
     useEffect(() => {
@@ -671,10 +761,12 @@ const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, ini
                 setBufferedTime(video.buffered.end(video.buffered.length - 1));
             }
         };
+        const onEnded = () => { if(onVideoEnded) onVideoEnded(); };
         video.addEventListener('play', onPlay); video.addEventListener('pause', onPause);
         video.addEventListener('timeupdate', onTimeUpdate); video.addEventListener('durationchange', onDurationChange);
         video.addEventListener('waiting', onWaiting); video.addEventListener('playing', onPlaying);
         video.addEventListener('progress', onProgress);
+        video.addEventListener('ended', onEnded);
         
         setIsPlaying(!video.paused);
         setCurrentTime(video.currentTime);
@@ -686,8 +778,9 @@ const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, ini
             video.removeEventListener('timeupdate', onTimeUpdate); video.removeEventListener('durationchange', onDurationChange);
             video.removeEventListener('waiting', onWaiting); video.removeEventListener('playing', onPlaying);
             video.removeEventListener('progress', onProgress);
+            video.removeEventListener('ended', onEnded);
         };
-    }, [activeDubbingLang]);
+    }, [activeDubbingLang, onVideoEnded]);
 
     const togglePlay = useCallback(() => {
         if (showSettingsPanel || showSubtitlesPanel) return;
@@ -703,7 +796,7 @@ const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, ini
 
     // Keyboard navigation and visibility control
      useEffect(() => {
-        if (showSettingsPanel || showSubtitlesPanel) {
+        if (showSettingsPanel || showSubtitlesPanel || isChannelListVisible) {
             return;
         }
 
@@ -715,24 +808,8 @@ const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, ini
             const controlsFocusables = Array.from(controlsPanelRef.current?.querySelectorAll('.focusable') || []) as HTMLElement[];
             const allTopControls = [...infoFocusables, ...controlsFocusables];
 
-            const nextChannelBtn = nextChannelButtonRef.current;
-            const isLive = !!liveChannels;
-
-            if (isLive && nextChannelBtn) {
-                if (e.key === 'ArrowUp' && (infoFocusables.includes(active) || controlsFocusables.includes(active))) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    nextChannelBtn.focus();
-                    return;
-                }
-                if (e.key === 'ArrowDown' && active === nextChannelBtn) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    (lastFocusedControlRef.current || controlsFocusables[0])?.focus();
-                    return;
-                }
-            }
-
+            const channelBtn = channelListButtonRef.current;
+            
             if (allTopControls.includes(active)) {
                 lastFocusedControlRef.current = active;
             }
@@ -854,7 +931,7 @@ const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, ini
         return () => {
             document.removeEventListener('keydown', handleKeyDown);
         };
-    }, [isOverlayVisible, showSettingsPanel, showSubtitlesPanel, togglePlay, activeSkip, liveChannels]);
+    }, [isOverlayVisible, showSettingsPanel, showSubtitlesPanel, isChannelListVisible, togglePlay, activeSkip, liveChannels]);
 
     const handleRecommendationPlay = (recItem: Movie) => {
         const mediaType = recItem.media_type || (recItem.title ? 'movie' : 'tv');
@@ -1034,120 +1111,137 @@ const VideoPlayer: React.FC<PlayerProps> = ({ item, itemType, initialSeason, ini
 
     return (
         <div ref={playerContainerRef} className="player-container-scope relative w-full h-full bg-black flex items-center justify-center overflow-hidden" onClick={togglePlay}>
-            <video ref={combinedRef} className="w-full h-full object-contain" playsInline autoPlay preload="metadata">
-             {vttTracks.map(track => (
-                    <track key={track.lang} kind="subtitles" srcLang={track.lang} src={track.url} label={track.label} default={activeSubtitleLang === track.lang} />
-                ))}
-            </video>
-            
-            <div 
-                className="absolute left-1/2 -translate-x-1/2 w-full max-w-4xl px-4 text-center pointer-events-none z-10 transition-all duration-200"
-                style={{
-                    bottom: `${subtitleSettings.verticalPosition + (isOverlayVisible ? 20 : 5)}%`,
-                    fontSize: `${subtitleSettings.fontSize / 100 * 1.5}rem`,
-                    lineHeight: '1.4',
-                }}
-            >
-                {activeCues.map((cue, i) => (
-                    <span
-                        key={i}
-                        className="py-1 px-3 rounded whitespace-pre-line"
-                        style={{
-                            color: 'white',
-                            backgroundColor: `rgba(0, 0, 0, ${subtitleSettings.backgroundOpacity / 100})`,
-                            textShadow: subtitleSettings.edgeStyle === 'drop-shadow' ? '2px 2px 3px rgba(0,0,0,0.8)' : 
-                                        subtitleSettings.edgeStyle === 'outline' ? 'rgb(0, 0, 0) 1px 1px 2px, rgb(0, 0, 0) -1px -1px 2px, rgb(0, 0, 0) -1px 1px 2px, rgb(0, 0, 0) 1px -1px 2px' : 'none',
-                        }}
+            <div inert={isChannelListVisible ? '' : undefined}>
+                <video ref={combinedRef} className="w-full h-full object-contain" playsInline autoPlay preload="metadata">
+                {vttTracks.map(track => (
+                        <track key={track.lang} kind="subtitles" srcLang={track.lang} src={track.url} label={track.label} default={activeSubtitleLang === track.lang} />
+                    ))}
+                </video>
+                
+                <div 
+                    className="absolute left-1/2 -translate-x-1/2 w-full max-w-4xl px-4 text-center pointer-events-none z-10 transition-all duration-200"
+                    style={{
+                        bottom: `${subtitleSettings.verticalPosition + (isOverlayVisible ? 20 : 5)}%`,
+                        fontSize: `${subtitleSettings.fontSize / 100 * 1.5}rem`,
+                        lineHeight: '1.4',
+                    }}
+                >
+                    {activeCues.map((cue, i) => (
+                        <span
+                            key={i}
+                            className="py-1 px-3 rounded whitespace-pre-line"
+                            style={{
+                                color: 'white',
+                                backgroundColor: `rgba(0, 0, 0, ${subtitleSettings.backgroundOpacity / 100})`,
+                                textShadow: subtitleSettings.edgeStyle === 'drop-shadow' ? '2px 2px 3px rgba(0,0,0,0.8)' : 
+                                            subtitleSettings.edgeStyle === 'outline' ? 'rgb(0, 0, 0) 1px 1px 2px, rgb(0, 0, 0) -1px -1px 2px, rgb(0, 0, 0) -1px 1px 2px, rgb(0, 0, 0) 1px -1px 2px' : 'none',
+                            }}
+                        >
+                            {cue.text}
+                        </span>
+                    ))}
+                </div>
+
+                {isBuffering && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                        <div className="w-16 h-16 border-4 border-zinc-600 border-t-white rounded-full animate-spin"></div>
+                    </div>
+                )}
+
+                {(logo || isLiveScheduleMode) && (
+                    <div className={`absolute top-4 left-4 z-20 px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-lg transition-opacity duration-300 ${isOverlayVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                        {isLiveScheduleMode ? (
+                            <div className="flex items-center gap-2">
+                                <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span>
+                                <span className="font-bold text-white uppercase tracking-wider">{t('live')}</span>
+                            </div>
+                        ) : (
+                             <img src={logo} alt={`${item.name} logo`} className="h-8 max-w-[100px] object-contain" />
+                        )}
+                    </div>
+                )}
+
+                {isLiveScheduleMode && liveReason && (
+                    <div className={`absolute top-16 left-4 z-20 max-w-xs px-3 py-2 bg-black/50 backdrop-blur-md rounded-lg text-sm text-white transition-opacity duration-300 ${isOverlayVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                       <strong>Up next: {item.title || item.name}.</strong> {liveReason}
+                    </div>
+                )}
+
+
+                {isDubbingLoading && (
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-4 py-2 bg-black/60 backdrop-blur-md rounded-full text-white font-semibold text-sm flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-zinc-400 border-t-white rounded-full animate-spin"></div>
+                        <span>{t('translating')} {dubbingProgress}</span>
+                    </div>
+                )}
+                
+                {activeSkip && (
+                    <button
+                        ref={skipButtonRef}
+                        onClick={(e) => { e.stopPropagation(); handleSkip(); }}
+                        className="absolute top-6 right-6 z-20 px-6 py-3 bg-black/60 backdrop-blur-md rounded-full text-white font-semibold text-lg hover:bg-white hover:text-black transition-all duration-300 animate-fade-in-up focusable"
                     >
-                        {cue.text}
-                    </span>
-                ))}
+                        {activeSkip === 'intro' ? 'Skip Intro' : 'Skip Outro'}
+                    </button>
+                )}
+
+                <Controls
+                    showControls={isOverlayVisible} isPlaying={isPlaying} currentTime={currentTime} duration={duration}
+                    bufferedTime={bufferedTime}
+                    togglePlay={togglePlay}
+                    navigate={navigate} t={t} item={item} episode={initialEpisode}
+                    onSettingsClick={() => { setShowSettingsPanel(p => !p); setShowSubtitlesPanel(false); }}
+                    onSubtitlesClick={() => { setShowSubtitlesPanel(p => !p); setShowSettingsPanel(false); }}
+                    settingsButtonRef={settingsButtonRef}
+                    subtitlesButtonRef={subtitlesButtonRef}
+                    recommendations={recommendations}
+                    onRecommendationClick={handleRecommendationPlay}
+                    infoPanelRef={infoPanelRef}
+                    controlsPanelRef={controlsPanelRef}
+                    progressBarRef={progressBarRef}
+                    recsPanelRef={recsPanelRef}
+                    isRecsFocused={isRecsFocused}
+                    skipSegments={skipSegments}
+                    liveChannels={liveChannels}
+                    isLiveScheduleMode={isLiveScheduleMode}
+                    onChannelListClick={(e: React.MouseEvent) => { e.stopPropagation(); setIsChannelListVisible(true); }}
+                    channelListButtonRef={channelListButtonRef}
+                />
+
+                <SubtitlesPanel
+                    show={showSubtitlesPanel}
+                    tracks={vttTracks}
+                    activeLang={activeSubtitleLang}
+                    onSelect={setActiveSubtitleLang}
+                    onClose={() => setShowSubtitlesPanel(false)}
+                    triggerRef={subtitlesButtonRef}
+                />
+
+                <SettingsPanel
+                    show={showSettingsPanel}
+                    onClose={() => setShowSettingsPanel(false)}
+                    triggerRef={settingsButtonRef}
+                    playbackRate={playbackRate}
+                    onRateChange={setPlaybackRate}
+                    qualities={streamLinks.map(l => l.quality)}
+                    activeQuality={activeQuality}
+                    onQualityChange={setActiveQuality}
+                    subtitleSettings={subtitleSettings}
+                    onSubtitleSettingsChange={handleSubtitleSettingsChange}
+                    activeDubbingLang={activeDubbingLang}
+                    onDubbingChange={setActiveDubbingLang}
+                />
             </div>
 
-            {isBuffering && (
-                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-                    <div className="w-16 h-16 border-4 border-zinc-600 border-t-white rounded-full animate-spin"></div>
-                </div>
-            )}
-
-            {logo && (
-                <div 
-                    className={`absolute top-4 left-4 z-20 px-3 py-1.5 bg-black/50 backdrop-blur-md rounded-lg transition-opacity duration-300 ${isOverlayVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                >
-                    <img src={logo} alt={`${item.name} logo`} className="h-8 max-w-[100px] object-contain" />
-                </div>
-            )}
-
-            {isDubbingLoading && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 px-4 py-2 bg-black/60 backdrop-blur-md rounded-full text-white font-semibold text-sm flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-zinc-400 border-t-white rounded-full animate-spin"></div>
-                    <span>{t('translating')} {dubbingProgress}</span>
-                </div>
-            )}
-            
-            {activeSkip && (
-                <button
-                    ref={skipButtonRef}
-                    onClick={(e) => { e.stopPropagation(); handleSkip(); }}
-                    className="absolute top-6 right-6 z-20 px-6 py-3 bg-black/60 backdrop-blur-md rounded-full text-white font-semibold text-lg hover:bg-white hover:text-black transition-all duration-300 animate-fade-in-up focusable"
-                >
-                    {activeSkip === 'intro' ? 'Skip Intro' : 'Skip Outro'}
-                </button>
-            )}
-
             {liveChannels && (
-                <button
-                    ref={nextChannelButtonRef}
-                    onClick={(e) => { e.stopPropagation(); handleNextChannel(); }}
-                    className={`absolute top-1/2 right-6 -translate-y-1/2 z-20 player-control-button focusable transition-opacity duration-300 ${isOverlayVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                    aria-label="Next Channel"
-                >
-                    <i className="fas fa-chevron-right"></i>
-                </button>
+                <ChannelListPanel
+                    channels={liveChannels}
+                    currentIndex={currentChannelIndex ?? 0}
+                    isVisible={isChannelListVisible}
+                    onSelect={handleSelectChannel}
+                    onClose={() => setIsChannelListVisible(false)}
+                />
             )}
-
-            <Controls
-                showControls={isOverlayVisible} isPlaying={isPlaying} currentTime={currentTime} duration={duration}
-                bufferedTime={bufferedTime}
-                togglePlay={togglePlay}
-                navigate={navigate} t={t} item={item} episode={initialEpisode}
-                onSettingsClick={() => { setShowSettingsPanel(p => !p); setShowSubtitlesPanel(false); }}
-                onSubtitlesClick={() => { setShowSubtitlesPanel(p => !p); setShowSettingsPanel(false); }}
-                settingsButtonRef={settingsButtonRef}
-                subtitlesButtonRef={subtitlesButtonRef}
-                recommendations={recommendations}
-                onRecommendationClick={handleRecommendationPlay}
-                infoPanelRef={infoPanelRef}
-                controlsPanelRef={controlsPanelRef}
-                progressBarRef={progressBarRef}
-                recsPanelRef={recsPanelRef}
-                isRecsFocused={isRecsFocused}
-                skipSegments={skipSegments}
-            />
-
-            <SubtitlesPanel
-                show={showSubtitlesPanel}
-                tracks={vttTracks}
-                activeLang={activeSubtitleLang}
-                onSelect={setActiveSubtitleLang}
-                onClose={() => setShowSubtitlesPanel(false)}
-                triggerRef={subtitlesButtonRef}
-            />
-
-            <SettingsPanel
-                show={showSettingsPanel}
-                onClose={() => setShowSettingsPanel(false)}
-                triggerRef={settingsButtonRef}
-                playbackRate={playbackRate}
-                onRateChange={setPlaybackRate}
-                qualities={streamLinks.map(l => l.quality)}
-                activeQuality={activeQuality}
-                onQualityChange={setActiveQuality}
-                subtitleSettings={subtitleSettings}
-                onSubtitleSettingsChange={handleSubtitleSettingsChange}
-                activeDubbingLang={activeDubbingLang}
-                onDubbingChange={setActiveDubbingLang}
-            />
         </div>
     );
 };
@@ -1159,11 +1253,11 @@ const Controls: React.FC<any> = ({
     settingsButtonRef, subtitlesButtonRef,
     recommendations, onRecommendationClick,
     infoPanelRef, controlsPanelRef, progressBarRef, recsPanelRef,
-    isRecsFocused, skipSegments
+    isRecsFocused, skipSegments, liveChannels, isLiveScheduleMode, onChannelListClick, channelListButtonRef
 }) => {
     
     const handleProgressInteraction = (e: React.MouseEvent | React.TouchEvent) => {
-        if (!progressBarRef.current || duration === 0) return;
+        if (isLiveScheduleMode || !progressBarRef.current || duration === 0) return;
         e.stopPropagation();
         const event = 'touches' in e ? e.touches[0] : e;
         const rect = progressBarRef.current.getBoundingClientRect();
@@ -1177,10 +1271,11 @@ const Controls: React.FC<any> = ({
     };
     
     const title = item.title || item.name || '';
-    const subtitle = `Sky Sports Premier Leagu... • 200K views • 12 hr ago`;
+    const subtitle = isLiveScheduleMode ? "CineTV Kids" : `Sky Sports Premier Leagu... • 200K views • 12 hr ago`;
+    const hasRecs = recommendations && recommendations.length > 0;
 
     return (
-        <div className={`absolute inset-x-0 bottom-0 text-white transition-all duration-300 ease-in-out flex flex-col ${showControls ? `opacity-100 ${isRecsFocused ? 'translate-y-0' : 'translate-y-28'}` : 'opacity-0 pointer-events-none translate-y-full'}`} onClick={(e) => e.stopPropagation()}>
+        <div className={`absolute inset-x-0 bottom-0 text-white transition-all duration-300 ease-in-out flex flex-col ${showControls ? `opacity-100 ${!hasRecs || isRecsFocused ? 'translate-y-0' : 'translate-y-28'}` : 'opacity-0 pointer-events-none translate-y-full'}`} onClick={(e) => e.stopPropagation()}>
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent pointer-events-none"></div>
             
             <div className="relative p-4 lg:p-6 pb-8 lg:pb-10 flex flex-col gap-4">
@@ -1198,56 +1293,63 @@ const Controls: React.FC<any> = ({
                         <button className="player-control-button focusable"><Icons.DislikeIcon className="w-6 h-6"/></button>
                         <button className="player-control-button focusable"><Icons.AddToPlaylistIcon className="w-6 h-6"/></button>
                         <button ref={settingsButtonRef} onClick={onSettingsClick} className="player-control-button focusable"><Icons.SettingsIcon className="w-6 h-6"/></button>
+                        {liveChannels && (
+                            <button ref={channelListButtonRef} onClick={onChannelListClick} className="player-control-button focusable" aria-label="Channel List">
+                                <i className="fas fa-list-ul"></i>
+                            </button>
+                        )}
                     </div>
                 </div>
 
                 {/* Progress Bar & Timestamps */}
-                <div className="w-full">
-                    <div 
-                        ref={progressBarRef} 
-                        tabIndex={0} 
-                        onClick={handleProgressInteraction} 
-                        onMouseMove={e => e.buttons === 1 && handleProgressInteraction(e)} 
-                        className="w-full flex items-center cursor-pointer group h-5 focusable progress-bar-focusable"
-                    >
-                        <div className="relative w-full bg-white/30 rounded-full transition-all duration-200 h-[5px] group-hover:h-2 group-focus-within:h-2">
-                            {skipSegments.intro && duration > 0 && (
+                {!isLiveScheduleMode && (
+                    <div className="w-full">
+                        <div 
+                            ref={progressBarRef} 
+                            tabIndex={0} 
+                            onClick={handleProgressInteraction} 
+                            onMouseMove={e => e.buttons === 1 && handleProgressInteraction(e)} 
+                            className="w-full flex items-center cursor-pointer group h-5 focusable progress-bar-focusable"
+                        >
+                            <div className="relative w-full bg-white/30 rounded-full transition-all duration-200 h-[5px] group-hover:h-2 group-focus-within:h-2">
+                                {skipSegments.intro && duration > 0 && (
+                                    <div
+                                        className="absolute h-full bg-red-600/50 pointer-events-none border-x-2 border-black/50"
+                                        style={{
+                                            left: `${(skipSegments.intro.start / duration) * 100}%`,
+                                            width: `${((skipSegments.intro.end - skipSegments.intro.start) / duration) * 100}%`
+                                        }}
+                                    />
+                                )}
+                                {skipSegments.outro && duration > 0 && (
+                                    <div
+                                        className="absolute h-full bg-red-600/50 pointer-events-none border-x-2 border-black/50"
+                                        style={{
+                                            left: `${(skipSegments.outro.start / duration) * 100}%`,
+                                            width: `${((skipSegments.outro.end - skipSegments.outro.start) / duration) * 100}%`
+                                        }}
+                                    />
+                                )}
                                 <div
-                                    className="absolute h-full bg-red-600/50 pointer-events-none border-x-2 border-black/50"
-                                    style={{
-                                        left: `${(skipSegments.intro.start / duration) * 100}%`,
-                                        width: `${((skipSegments.intro.end - skipSegments.intro.start) / duration) * 100}%`
+                                    className="absolute h-full bg-white/50 rounded-full"
+                                    style={{ width: `${(bufferedTime / duration) * 100}%` }}
+                                />
+                                <div className="absolute h-full bg-red-600 rounded-full" style={{ width: `${(currentTime / duration) * 100}%` }} />
+                                <div 
+                                    className="absolute top-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all pointer-events-none group-hover:w-5 group-hover:h-5 group-focus-within:w-5 group-focus-within:h-5"
+                                    style={{ 
+                                        left: `${(currentTime / duration) * 100}%`,
+                                        transform: 'translate(-50%, -50%)',
                                     }}
                                 />
-                            )}
-                            {skipSegments.outro && duration > 0 && (
-                                <div
-                                    className="absolute h-full bg-red-600/50 pointer-events-none border-x-2 border-black/50"
-                                    style={{
-                                        left: `${(skipSegments.outro.start / duration) * 100}%`,
-                                        width: `${((skipSegments.outro.end - skipSegments.outro.start) / duration) * 100}%`
-                                    }}
-                                />
-                            )}
-                            <div
-                                className="absolute h-full bg-white/50 rounded-full"
-                                style={{ width: `${(bufferedTime / duration) * 100}%` }}
-                            />
-                            <div className="absolute h-full bg-red-600 rounded-full" style={{ width: `${(currentTime / duration) * 100}%` }} />
-                            <div 
-                                className="absolute top-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all pointer-events-none group-hover:w-5 group-hover:h-5 group-focus-within:w-5 group-focus-within:h-5"
-                                style={{ 
-                                    left: `${(currentTime / duration) * 100}%`,
-                                    transform: 'translate(-50%, -50%)',
-                                }}
-                            />
-                        </div> 
+                            </div> 
+                        </div>
+                        <div className="flex justify-between items-center mt-1 px-1">
+                            <span className="text-xs font-mono">{formatTime(currentTime)}</span>
+                            <span className="text-xs font-mono">{formatTime(duration)}</span>
+                        </div>
                     </div>
-                    <div className="flex justify-between items-center mt-1 px-1">
-                        <span className="text-xs font-mono">{formatTime(currentTime)}</span>
-                        <span className="text-xs font-mono">{formatTime(duration)}</span>
-                    </div>
-                </div>
+                )}
 
                 {/* Recommendations Shelf */}
                 {recommendations && recommendations.length > 0 && (
