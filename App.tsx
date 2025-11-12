@@ -106,6 +106,9 @@ const App: React.FC = () => {
 
     const focusables = (Array.from(navigationScope.querySelectorAll('.focusable:not([disabled])')) as HTMLElement[])
       .filter(el => {
+        if (el.closest('[inert]')) {
+          return false;
+        }
         const style = window.getComputedStyle(el);
         const rect = el.getBoundingClientRect();
         return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
@@ -203,7 +206,7 @@ const App: React.FC = () => {
               </Routes>
               <PipPlayer />
               <GlobalModal />
-            </PlayerProvider>
+            </PlayerProvider> 
           </HashRouter>
           <ToastContainer />
       </ProfileProvider>
