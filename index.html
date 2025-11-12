@@ -319,6 +319,13 @@
       div.focusable.top-ten-card-focusable:focus-visible {
         transform: scale(1);
       }
+
+      /* Prevent scaling on Live TV cards on focus and show colors */
+      div.focusable.live-tv-card-focusable:focus-visible {
+        transform: scale(1);
+        outline: 3px solid rgba(255, 255, 255, 0.9) !important;
+        outline-offset: 2px;
+      }
       
       /* New Player Styles */
       .player-control-button {
